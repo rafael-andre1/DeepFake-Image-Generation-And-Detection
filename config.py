@@ -1,3 +1,5 @@
+# ------------------------- Global Variables ------------------------- #
+
 DATA_DIR = r"../deepfake_data"
 
 WIKI_DIR = DATA_DIR + "/wiki"
