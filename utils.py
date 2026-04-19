@@ -1,3 +1,4 @@
+from matplotlib import image
 from scipy.ndimage import gaussian_filter
 import torchvision.transforms as transforms
 from torch.utils.data import Dataset, DataLoader
@@ -26,6 +27,14 @@ def resnetFormat(target_size=(224, 224), grayscale_to_rgb=False):
     pipeline = [transforms.ToTensor(), transforms.Resize(target_size)]    
     return transforms.Compose(pipeline)
 
+def dcganFormat(image_size=64):
+    # Transforms for DCGAN: resize, center crop, to tensor, normalize to [-1, 1] (matches Tanh output)
+    return transforms.Compose([
+        transforms.Resize((image_size, image_size)),
+        transforms.CenterCrop(image_size),
+        transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)) ])
+
 
 # To load and preserve order:
 
@@ -40,12 +49,13 @@ loader = DataLoader(
 """
 
 class DeepFakeDataset(Dataset):
-    def __init__(self, img_dir, label, transform=resnetFormat(), range_folds=[0,5], interval=True): #, albumentations = None, gauss = False):
+    def __init__(self, img_dir, label, transform=resnetFormat(), range_folds=[0,5], interval=True, image_only=False): #, albumentations = None, gauss = False):
         self.img_dir = img_dir
         self.label = label
         self.transform = transform
         self.range_folds = range_folds
         self.interval = interval
+        self.image_only = image_only
         #self.albumentations = albumentations
         #self.gauss = gauss
 
@@ -81,24 +91,29 @@ class DeepFakeDataset(Dataset):
         # formatting for resnet
         if self.transform: image = self.transform(image)
 
+        if self.image_only: return image 
         return image, self.label, fold, fname
 
     # WARNING: returns the np.array representation of the image
     def show(self, idx, plot=True):
-        image, label, fold, fname = self[idx]
+        path, fold, fname = self.samples[idx]
+        item = self[idx]
+        image = item if self.image_only else item[0]
+        label = None if self.image_only else self.label
 
         if plot:
             if isinstance(image, torch.Tensor):
-                img_plot = image.detach().cpu().permute(1, 2, 0).numpy()
+                img_plot = image.detach().cpu()
+                # If normalized to [-1,1], bring back to [0,1] for display
+                if img_plot.min() < 0: img_plot = (img_plot + 1) / 2
+                img_plot = img_plot.permute(1, 2, 0).numpy()
                 plt.imshow(img_plot)
             else: plt.imshow(np.array(image))
-
             plt.title(f"label={label}, fold={fold}, file={fname}")
             plt.show()
 
-        if isinstance(image, torch.Tensor): print(f"img_shape={image.shape}, img_type={type(image)}, label={label}, fold={fold}, file={fname}")
-        else: print(f"img_shape={np.array(image).shape}, img_type={type(image)}, label={label}, fold={fold}, file={fname}")
-
+        shape = image.shape if isinstance(image, torch.Tensor) else np.array(image).shape
+        print(f"img_shape={shape}, img_type={type(image)}, label={label}, fold={fold}, file={fname}")
         return image
 
 """ Explaining buildDsFolds...
