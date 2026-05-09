@@ -28,9 +28,16 @@ from sklearn.metrics import (
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 SUPPORTED_EXTENSIONS = (".png", ".jpg", ".jpeg")
 
-def resnetFormat(target_size=(224, 224), grayscale_to_rgb=False):
-    # Transforms to tensor & resizes for faster computation 
-    pipeline = [transforms.ToTensor(), transforms.Resize(target_size)]    
+IMAGENET_MEAN = [0.485, 0.456, 0.406]
+IMAGENET_STD  = [0.229, 0.224, 0.225]
+
+
+def resnetFormat(target_size=(224, 224), grayscale_to_rgb=False, normalize=True):
+    # Transforms to tensor & resizes for faster computation. ImageNet
+    # normalisation matches what pretrained ResNet was trained on.
+    pipeline = [transforms.ToTensor(), transforms.Resize(target_size)]
+    if normalize:
+        pipeline.append(transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD))
     return transforms.Compose(pipeline)
 
 def dcganFormat(image_size=64):
@@ -230,23 +237,37 @@ class RandomJPEG:
         return Image.open(buf).convert("RGB")
 
 
-def train_transform(target_size=(224, 224)):
+def train_transform(target_size=(224, 224), normalize=True):
     """Augmentation pipeline for the deepfake classifier — applied only to
-    the train split. Eval uses the deterministic resnetFormat()."""
-    return transforms.Compose([
+    the train split. Eval uses the deterministic resnetFormat().
+
+    Heavy blur and low-quality JPEG are gated behind RandomApply at low p
+    because deepfake detectors latch on to those exact artifacts: when
+    applied to *real* images they create label noise on the real class.
+    Crop + flip still fire on every sample so the model still sees varied
+    inputs."""
+    pipeline = [
         transforms.Resize((int(target_size[0] * 1.15), int(target_size[1] * 1.15))),
-        transforms.RandomResizedCrop(target_size, scale=(0.8, 1.0)),
+        transforms.RandomResizedCrop(target_size, scale=(0.85, 1.0)),
         transforms.RandomHorizontalFlip(p=0.5),
-        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05),
-        transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 2.0)),
-        RandomJPEG(p=0.5, quality_range=(40, 95)),
+        transforms.RandomApply([
+            transforms.ColorJitter(brightness=0.15, contrast=0.15,
+                                   saturation=0.15, hue=0.02),
+        ], p=0.5),
+        transforms.RandomApply([
+            transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 1.0)),
+        ], p=0.2),
+        RandomJPEG(p=0.25, quality_range=(70, 95)),
         transforms.ToTensor(),
-    ])
+    ]
+    if normalize:
+        pipeline.append(transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD))
+    return transforms.Compose(pipeline)
 
 
-def eval_transform(target_size=(224, 224)):
+def eval_transform(target_size=(224, 224), normalize=True):
     """Deterministic transform for val/test."""
-    return resnetFormat(target_size=target_size)
+    return resnetFormat(target_size=target_size, normalize=normalize)
 
 
 def expected_calibration_error(y_true, y_prob, n_bins=10):
