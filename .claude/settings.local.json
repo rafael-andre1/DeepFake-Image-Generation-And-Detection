@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import json; nb = json.load\\(open\\('resnetExploration.ipynb'\\)\\); print\\(f'Total cells: {len\\(nb[\\\\\"cells\\\\\"]\\)}'\\); [print\\(f'Cell {i}: {c[\\\\\"cell_type\\\\\"]} - {\\(c[\\\\\"source\\\\\"][0][:60] if c[\\\\\"source\\\\\"] else \\\\\"[empty]\\\\\"\\)}'\\) for i, c in enumerate\\(nb['cells']\\)]\")",
+      "Bash(python -c \"import json; line = open\\('outputs/samples_01.jsonl'\\).readline\\(\\); obj = json.loads\\(line\\); print\\('Keys:', list\\(obj.keys\\(\\)\\)\\); print\\('Epoch:', obj.get\\('epoch'\\)\\); print\\('Format:', obj.get\\('format'\\)\\); print\\('Grid size \\(chars\\):', len\\(obj.get\\('grid_b64', ''\\)\\)\\)\")"
+    ]
+  }
+}

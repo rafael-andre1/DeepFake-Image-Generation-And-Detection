@@ -6,6 +6,7 @@ from torch.utils.data import Dataset, DataLoader
 import pandas as pd
 import numpy as np
 from PIL import Image
+import io
 import random
 import torch
 from tqdm import tqdm
@@ -16,6 +17,11 @@ from torch.utils.data import ConcatDataset
 from torchvision.models import resnet18
 from tqdm.auto import tqdm
 import torch.nn as nn
+
+from sklearn.metrics import (
+    accuracy_score, precision_score, recall_score, f1_score,
+    roc_auc_score, balanced_accuracy_score, recall_score
+)
 
 
 
@@ -200,4 +206,115 @@ def showResNetVision(loader):
     )
     plt.tight_layout()
     plt.show()
-    
+
+
+# ===================================================================
+#  Augmentation + extended metrics (added for iteration narrative)
+# ===================================================================
+
+class RandomJPEG:
+    """JPEG re-encode with random quality. Deepfake detectors are notoriously
+    brittle to JPEG; training with it forces the model to learn semantic cues
+    rather than compression artifacts."""
+    def __init__(self, p=0.5, quality_range=(40, 95)):
+        self.p = p
+        self.quality_range = quality_range
+
+    def __call__(self, img):
+        if random.random() > self.p:
+            return img
+        q = random.randint(*self.quality_range)
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=q)
+        buf.seek(0)
+        return Image.open(buf).convert("RGB")
+
+
+def train_transform(target_size=(224, 224)):
+    """Augmentation pipeline for the deepfake classifier — applied only to
+    the train split. Eval uses the deterministic resnetFormat()."""
+    return transforms.Compose([
+        transforms.Resize((int(target_size[0] * 1.15), int(target_size[1] * 1.15))),
+        transforms.RandomResizedCrop(target_size, scale=(0.8, 1.0)),
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05),
+        transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 2.0)),
+        RandomJPEG(p=0.5, quality_range=(40, 95)),
+        transforms.ToTensor(),
+    ])
+
+
+def eval_transform(target_size=(224, 224)):
+    """Deterministic transform for val/test."""
+    return resnetFormat(target_size=target_size)
+
+
+def expected_calibration_error(y_true, y_prob, n_bins=10):
+    """ECE: weighted average of |confidence - accuracy| across confidence bins."""
+    y_true = np.asarray(y_true)
+    y_prob = np.asarray(y_prob)
+    confidences = y_prob.max(axis=1) if y_prob.ndim == 2 else y_prob
+    predictions = y_prob.argmax(axis=1) if y_prob.ndim == 2 else (y_prob >= 0.5).astype(int)
+    accuracies = (predictions == y_true).astype(float)
+
+    bins = np.linspace(0.0, 1.0, n_bins + 1)
+    ece = 0.0
+    for i in range(n_bins):
+        lo, hi = bins[i], bins[i + 1]
+        mask = (confidences > lo) & (confidences <= hi) if i > 0 else (confidences >= lo) & (confidences <= hi)
+        if mask.sum() == 0:
+            continue
+        bin_acc = accuracies[mask].mean()
+        bin_conf = confidences[mask].mean()
+        ece += (mask.sum() / len(y_true)) * abs(bin_acc - bin_conf)
+    return float(ece)
+
+
+def compute_metrics_ext(y_true, y_pred, y_prob=None, generators=None):
+    """Extended metrics. y_prob: (N, 2) softmax probs. generators: optional
+    list/array tagging which generator each sample came from, used for
+    per-generator recall (PDF §3.8)."""
+    y_true = np.asarray(y_true)
+    y_pred = np.asarray(y_pred)
+
+    out = {
+        "accuracy":          accuracy_score(y_true, y_pred),
+        "balanced_accuracy": balanced_accuracy_score(y_true, y_pred),
+        "precision":         precision_score(y_true, y_pred, zero_division=0),
+        "recall":            recall_score(y_true, y_pred, zero_division=0),
+        "f1":                f1_score(y_true, y_pred, zero_division=0),
+    }
+
+    if y_prob is not None:
+        y_prob = np.asarray(y_prob)
+        prob_pos = y_prob[:, 1] if y_prob.ndim == 2 else y_prob
+        try:
+            out["roc_auc"] = roc_auc_score(y_true, prob_pos)
+        except ValueError:
+            out["roc_auc"] = float("nan")
+        out["ece"] = expected_calibration_error(y_true, y_prob, n_bins=10)
+    else:
+        out["roc_auc"] = float("nan")
+        out["ece"]     = float("nan")
+
+    if generators is not None:
+        gens = np.asarray(generators)
+        per_gen = {}
+        for g in np.unique(gens):
+            mask = gens == g
+            if mask.sum() == 0:
+                continue
+            per_gen[str(g)] = recall_score(y_true[mask], y_pred[mask], zero_division=0)
+        out["per_generator_recall"] = per_gen
+
+    return out
+
+
+def set_global_seed(seed=42):
+    """Fix seeds across torch / numpy / random for reproducibility (PDF §2.4)."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
