@@ -1,0 +1,5 @@
+fid,kid_mean,kid_std,run_name,epoch,evaluated_model,discriminator
+295.0389404296875,0.20135512948036194,0.01465450320392847,g4_spectralnorm_discriminator,50,ema,spectral_norm_no_bn
+288.5843811035156,0.1723734587430954,0.011781970039010048,g4_spectralnorm_discriminator,100,ema,spectral_norm_no_bn
+253.99945068359375,0.13671931624412537,0.012319662608206272,g4_spectralnorm_discriminator,150,ema,spectral_norm_no_bn
+228.50918579101562,0.11244328320026398,0.010105899535119534,g4_spectralnorm_discriminator,200,ema,spectral_norm_no_bn
