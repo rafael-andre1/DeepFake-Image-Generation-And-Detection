@@ -1,0 +1,31 @@
+{
+  "run_name": "g0_baseline_instrumented_with_KID",
+  "real_dir": "../../deepfake_data/wiki",
+  "image_size": 64,
+  "batch_size": 64,
+  "latent_dim": 100,
+  "ngf": 64,
+  "ndf": 64,
+  "num_epochs": 200,
+  "lr_g": 0.0002,
+  "lr_d": 0.0001,
+  "beta1": 0.5,
+  "seed": 42,
+  "start_fold": 0,
+  "end_fold": 5,
+  "interval": true,
+  "sample_every": 25,
+  "checkpoint_every": 5,
+  "fid_every": 50,
+  "fid_num_images": 300,
+  "compute_kid": true,
+  "num_workers": 0,
+  "num_real_images": 1467,
+  "folds_used": [
+    "00",
+    "01",
+    "02",
+    "03",
+    "04"
+  ]
+}
