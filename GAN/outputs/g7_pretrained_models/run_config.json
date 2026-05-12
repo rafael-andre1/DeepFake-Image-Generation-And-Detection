@@ -1,0 +1,8 @@
+{
+  "arch": "FastGAN",
+  "nz": 256,
+  "ngf": 64,
+  "img_size": 256,
+  "lr": 0.0002,
+  "epochs": 300
+}
