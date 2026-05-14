@@ -1,7 +1,7 @@
 {
   "run_name": "g9_fastgan",
   "architecture": "FastGAN",
-  "paper": "Liu et al. 2021 \u2014 arXiv:2101.04775",
+  "paper": "Liu et al. 2021 - arXiv:2101.04775",
   "real_dir": "../../deepfake_data/wiki",
   "image_size": 64,
   "batch_size": 128,
@@ -15,6 +15,11 @@
   "beta2": 0.999,
   "lambda_dec": 1.0,
   "dec_size": 16,
+  "loss_type": "bce",
+  "use_amp": true,
+  "use_channels_last": true,
+  "use_diffaug": false,
+  "diffaug_policy": "color,translation,cutout",
   "real_label_low": 0.85,
   "real_label_high": 1.0,
   "fake_label": 0.0,
@@ -37,11 +42,11 @@
   "fid_every": 50,
   "fid_num_images": 300,
   "compute_kid": true,
-  "num_workers": 0,
+  "num_workers": 4,
   "num_real_images": 29724,
   "sle_connections": [
-    "feat_4\u2192feat_32",
-    "feat_8\u2192feat_64"
+    "feat_4->feat_32",
+    "feat_8->feat_64"
   ],
   "discriminator_decoder": true,
   "folds_used": [
