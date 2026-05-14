@@ -1,3 +1,11 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# # GAN - g8 (improved discriminator)
+
+# In[11]:
+
+
 import os
 import json
 import base64
@@ -22,6 +30,11 @@ import sys
 sys.path.append(str(Path.cwd().parent))
 
 from utils import DeepFakeDataset, dcganFormat  # dataset usado nas experiências anteriores
+
+
+# ## Config
+
+# In[12]:
 
 
 # =========================================================
@@ -110,7 +123,14 @@ print("Output dir:", OUTPUT_DIR)
 print("Folds:", START_FOLD, "->", END_FOLD)
 
 
+# ## Utils
 
+# In[13]:
+
+
+# =========================================================
+# Utils de logging, samples, EMA e métricas
+# =========================================================
 def denorm_to_01(x):
     return ((x + 1) / 2).clamp(0, 1)
 
@@ -294,6 +314,11 @@ def compute_fid_kid(generator, dataloader, num_images=1024, latent_dim=LATENT_DI
     return {"fid": fid_score, "kid_mean": kid_mean, "kid_std": kid_std}
 
 
+# ## Dataset & DataLoader
+
+# In[14]:
+
+
 dataset = DeepFakeDataset(
     img_dir=REAL_DIR,
     label=1,
@@ -319,6 +344,11 @@ except Exception:
     print("Dataset carregado.")
 
 
+# ### Confirmar visualmente o preprocessing
+
+# In[15]:
+
+
 real_batch = next(iter(dataloader))
 real_batch = denorm_to_01(real_batch[:16].cpu())
 
@@ -334,6 +364,10 @@ save_image(grid, real_grid_path)
 print("Grelha real guardada em:", real_grid_path)
 
 
+# ## Inicialização de pesos
+
+# In[16]:
+
 
 def weights_init(m):
     classname = m.__class__.__name__
@@ -342,6 +376,11 @@ def weights_init(m):
     elif "BatchNorm" in classname:
         nn.init.normal_(m.weight.data, 1.0, 0.02)
         nn.init.constant_(m.bias.data, 0)
+
+
+# ## Gerador
+
+# In[17]:
 
 
 class Generator(nn.Module):
@@ -384,6 +423,8 @@ class Generator(nn.Module):
 # 
 # 1. Spectral Normalization instead of BatchNorm — constrains the discriminator's Lipschitz constant, preventing it from becoming overconfident. BatchNorm in D is actually known to cause instability.
 # 2. Minibatch Std layer — appends a diversity statistic across the batch before the final conv, giving the discriminator a signal about mode collapse without making it stronger at individual-sample classification.
+
+# In[18]:
 
 
 class MinibatchStd(nn.Module):
@@ -432,6 +473,11 @@ class Discriminator(nn.Module):
         return self.classifier(x).view(-1)
 
 
+# ## Instanciar modelos
+
+# In[19]:
+
+
 netG = Generator(LATENT_DIM, NGF, NUM_CHANNELS).to(DEVICE)
 netD = Discriminator(NUM_CHANNELS, NDF, dropout_p=DROPOUT_P).to(DEVICE)
 
@@ -451,6 +497,11 @@ fixed_noise = torch.randn(64, LATENT_DIM, 1, 1, device=DEVICE)
 print(netG)
 print(netD)
 print("EMA generator active:", USE_EMA)
+
+
+# ## Treino — g6
+
+# In[ ]:
 
 
 from tqdm.auto import tqdm
@@ -735,3 +786,252 @@ print("Interpolação final guardada em:", interp_path)
 print("Treino concluído.")
 print("Melhor FID:", best_fid, "@ epoch", best_fid_epoch)
 
+
+# ## Curvas de treino
+
+# In[21]:
+
+
+history_df = pd.read_csv(history_path)
+
+plt.figure(figsize=(10, 5))
+plt.plot(history_df["epoch"], history_df["loss_g"], label="Generator Loss")
+plt.plot(history_df["epoch"], history_df["loss_d"], label="Discriminator Loss")
+plt.xlabel("Epoch")
+plt.ylabel("Loss")
+plt.title(f"GAN Training Losses — {RUN_NAME}")
+plt.legend()
+plt.grid(True)
+loss_plot_path = os.path.join(PLOTS_DIR, "loss_curves.png")
+plt.savefig(loss_plot_path, dpi=150, bbox_inches="tight")
+plt.show()
+
+plt.figure(figsize=(10, 5))
+plt.plot(history_df["epoch"], history_df["D_x"], label="D(x)")
+plt.plot(history_df["epoch"], history_df["D_G_z_fake"], label="D(G(z)) fake")
+plt.plot(history_df["epoch"], history_df["D_G_z_gen"], label="D(G(z)) gen")
+plt.xlabel("Epoch")
+plt.ylabel("Probability")
+plt.title(f"Discriminator Outputs During Training — {RUN_NAME}")
+plt.legend()
+plt.grid(True)
+disc_plot_path = os.path.join(PLOTS_DIR, "discriminator_outputs.png")
+plt.savefig(disc_plot_path, dpi=150, bbox_inches="tight")
+plt.show()
+
+if "instance_noise_std" in history_df.columns:
+    plt.figure(figsize=(10, 4))
+    plt.plot(history_df["epoch"], history_df["instance_noise_std"], label="Instance noise std")
+    plt.xlabel("Epoch")
+    plt.ylabel("Std")
+    plt.title(f"Instance Noise Schedule — {RUN_NAME}")
+    plt.legend()
+    plt.grid(True)
+    noise_plot_path = os.path.join(PLOTS_DIR, "instance_noise_schedule.png")
+    plt.savefig(noise_plot_path, dpi=150, bbox_inches="tight")
+    plt.show()
+
+
+# ## Curvas FID/KID
+
+# In[13]:
+
+
+if os.path.exists(fid_path):
+    fid_df = pd.read_csv(fid_path)
+
+    if "fid" in fid_df.columns and fid_df["fid"].notna().any():
+        plt.figure(figsize=(10, 5))
+        plt.plot(fid_df["epoch"], fid_df["fid"], marker="o", label="FID")
+        plt.xlabel("Epoch")
+        plt.ylabel("FID")
+        plt.title(f"FID vs Epoch — {RUN_NAME}")
+        plt.legend()
+        plt.grid(True)
+        fid_plot_path = os.path.join(PLOTS_DIR, "fid_curve.png")
+        plt.savefig(fid_plot_path, dpi=150, bbox_inches="tight")
+        plt.show()
+    else:
+        print("FID existe, mas está vazio/NaN. Verificar torchmetrics/torch-fidelity.")
+
+    if "kid_mean" in fid_df.columns and fid_df["kid_mean"].notna().any():
+        plt.figure(figsize=(10, 5))
+        plt.plot(fid_df["epoch"], fid_df["kid_mean"], marker="o", label="KID mean")
+        if "kid_std" in fid_df.columns:
+            plt.fill_between(
+                fid_df["epoch"],
+                fid_df["kid_mean"] - fid_df["kid_std"],
+                fid_df["kid_mean"] + fid_df["kid_std"],
+                alpha=0.2,
+                label="± KID std",
+            )
+        plt.xlabel("Epoch")
+        plt.ylabel("KID")
+        plt.title(f"KID vs Epoch — {RUN_NAME}")
+        plt.legend()
+        plt.grid(True)
+        kid_plot_path = os.path.join(PLOTS_DIR, "kid_curve.png")
+        plt.savefig(kid_plot_path, dpi=150, bbox_inches="tight")
+        plt.show()
+
+    display(fid_df)
+else:
+    print("Ainda não existe fid_kid_history.csv.")
+
+
+# ## Gerar imagens com o melhor checkpoint
+
+# In[14]:
+
+
+best_ckpt_path = os.path.join(CHECKPOINTS_DIR, "best_fid_checkpoint.pt")
+
+if not os.path.exists(best_ckpt_path):
+    print("Não existe best_fid_checkpoint.pt. Isto pode acontecer se FID não foi calculado.")
+    print("Vou usar o modelo atual em memória.")
+    best_gen = copy.deepcopy(netG_ema if USE_EMA else netG)
+else:
+    ckpt = torch.load(best_ckpt_path, map_location=DEVICE)
+    print("Best checkpoint epoch:", ckpt.get("epoch"))
+    print("Best FID:", ckpt.get("best_fid"))
+
+    best_gen = copy.deepcopy(netG_ema if USE_EMA else netG)
+    if USE_EMA and ckpt.get("netG_ema_state_dict") is not None:
+        best_gen.load_state_dict(ckpt["netG_ema_state_dict"])
+    else:
+        best_gen.load_state_dict(ckpt["netG_state_dict"])
+
+best_gen = best_gen.to(DEVICE)
+best_gen.eval()
+
+with torch.no_grad():
+    noise = torch.randn(16, LATENT_DIM, 1, 1, device=DEVICE)
+    fake_images = denorm_to_01(best_gen(noise).cpu())
+
+grid = make_grid(fake_images, nrow=4, padding=2)
+
+plt.figure(figsize=(8, 8))
+plt.imshow(grid.permute(1, 2, 0))
+plt.axis("off")
+plt.title("Samples aleatórias — melhor checkpoint")
+plt.show()
+
+manual_sample_path = os.path.join(SAMPLES_DIR, "manual_random_samples_best_fid.png")
+save_image(grid, manual_sample_path)
+print("Samples guardadas em:", manual_sample_path)
+
+
+# ## Interpolação latente com o melhor checkpoint
+
+# In[15]:
+
+
+interp_best_path = os.path.join(SAMPLES_DIR, "latent_interpolation_best_fid.png")
+save_latent_interpolation(best_gen, LATENT_DIM, DEVICE, interp_best_path, steps=8, nrow=8)
+
+img = PILImage.open(interp_best_path)
+plt.figure(figsize=(12, 2))
+plt.imshow(img)
+plt.axis("off")
+plt.title("Interpolação latente — melhor checkpoint")
+plt.show()
+
+print("Interpolação guardada em:", interp_best_path)
+
+
+# ## Resumo automático da run
+
+# In[16]:
+
+
+summary = {
+    "Iteration": "g6_facecrop_regularized",
+    "Change": "Face crop / center crop fallback + one-sided label smoothing + decaying instance noise + discriminator dropout; keep EMA and best-FID checkpoint selection.",
+    "FID @ end": None,
+    "Best FID": None,
+    "Best FID epoch": None,
+    "Notes": "Testa se simplificar a distribuição visual e reduzir a saturação do discriminador melhora a qualidade do gerador face à g5.",
+}
+
+if os.path.exists(fid_path):
+    fid_df = pd.read_csv(fid_path)
+    if len(fid_df) > 0 and fid_df["fid"].notna().any():
+        valid = fid_df.dropna(subset=["fid"])
+        summary["FID @ end"] = float(valid.iloc[-1]["fid"])
+        best_row = valid.sort_values("fid").iloc[0]
+        summary["Best FID"] = float(best_row["fid"])
+        summary["Best FID epoch"] = int(best_row["epoch"])
+
+print(json.dumps(summary, indent=2, ensure_ascii=False))
+
+
+# ## Conclusão g6
+# 
+# **Comparação direta g5 vs g6:**
+# 
+# | Métrica           |                      g5 |                      g6 |
+# | ----------------- | ----------------------: | ----------------------: |
+# | Melhor FID        | **163.31** na epoch 100 | **148.20** na epoch 200 |
+# | Melhor KID mean   | **0.0483** na epoch 200 | **0.0435** na epoch 200 |
+# | Loss G final      |               ~**7.21** |               ~**4.40** |
+# | Loss D final      |               ~**0.06** |               ~**0.41** |
+# | D(x) final        |               ~**0.98** |               ~**0.88** |
+# | D(G(z)) gen final |              ~**0.008** |              ~**0.037** |
+# 
+# - Isto é uma melhoria importante.
+# 
+# - No g5, o discriminador estava praticamente perfeito. No g6, o discriminador continua mais forte que o gerador, mas já não está tão saturado. Ou seja, a regularização ajudou.
+# 
+# **O que melhorou:**
+# 
+# - O FID melhorou de 163.31 → 148.20, o que é uma melhoria relativa de cerca de 9.3%.
+# 
+# - Também é muito positivo que, ao contrário do g5, o FID do g6 melhora continuamente:
+# 
+#     - epoch 1: 368.77
+#     - epoch 50: 181.60
+#     - epoch 100: 162.95
+#     - epoch 150: 156.16
+#     - epoch 200: 148.20
+# 
+# - Isto mostra que a combinação face/center crop + regularização do D + EMA tornou o treino mais estável.
+# 
+# - A loss também está muito mais saudável. No g5, o loss_g disparava até ~7.2 e o loss_d caía quase para zero. No g6, o loss_g termina em ~4.4 e o loss_d fica por volta de ~0.4. Isto significa que o discriminador já não está a esmagar o gerador tão cedo.
+# 
+# **O que continua problemático:**
+# 
+# - Os crops confirmam um problema importante: o preprocessing ainda não está realmente a isolar faces. Vemos várias imagens que continuam a ter:
+# 
+#      corpo inteiro;
+#      pessoas muito pequenas;
+#      imagens de desporto;
+#      palcos/concertos;
+#      mais de uma pessoa;
+#      crops sem rosto claro.
+# 
+# - Portanto, o g6 melhorou, mas provavelmente não por ter feito um “face crop” perfeito. Melhorou porque:
+# 
+#      reduziu um pouco a variabilidade das imagens;
+#      aplicou regularização ao discriminador;
+#      manteve o EMA;
+#      o treino ficou mais equilibrado.
+# 
+# - Mas ainda há muito ruído visual no dataset. Para uma DCGAN 64×64, isto continua a ser difícil.
+# 
+# **Interpretação das imagens geradas:**
+# 
+# - As imagens do g6 parecem melhores em distribuição geral, mas ainda não são faces convincentes. Há mais consistência do que no g5, mas continuam a aparecer:
+# 
+#      rostos deformados;
+#      fundos misturados com pessoas;
+#      corpos incompletos;
+#      texturas pouco naturais;
+#      alguns samples quase abstratos.
+# 
+# - Isto bate certo com o diagnóstico: o modelo melhorou quantitativamente, mas a qualidade perceptual ainda é limitada pela arquitetura e pelo preprocessing.
+
+# ---
+# 
+# Na experiência g6, introduzimos um pré-processamento baseado em face crop, com fallback para center crop, e adicionámos regularização ao discriminador através de one-sided label smoothing, instance noise e dropout. Embora a deteção facial não tenha sido perfeita devido à grande variabilidade das imagens do dataset, esta experiência reduziu parcialmente a complexidade da distribuição e tornou o treino mais equilibrado. O FID melhorou de 163.31 no g5 para 148.20 no g6, e o KID também diminuiu de 0.0483 para 0.0435. Além disso, os outputs do discriminador deixaram de estar tão saturados, indicando que o gerador passou a receber sinais de treino mais úteis.
+
+# 
