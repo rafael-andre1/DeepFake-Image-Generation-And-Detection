@@ -1,0 +1,3 @@
+fid,kid_mean,kid_std,run_name,epoch,evaluated_model
+,,,g9_fastgan,1,ema
+,,,g9_fastgan,50,ema
