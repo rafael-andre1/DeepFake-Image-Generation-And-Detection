@@ -70,9 +70,41 @@ def view(frames):
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:] or [
-        "outputs/samples_01.jsonl",
-        "outputs/samples_02.jsonl",
-        "outputs/samples_03.jsonl",
-    ]
-    view(load_frames(args))
+    import os
+
+    folder = input("Folder: (gNUMBER format) ")
+
+    if folder.startswith("g") and folder[1:].isdigit():
+        base = os.path.dirname(os.path.abspath(__file__))
+
+        # folder must be overwritten to match name of the dir that starts with folder
+        for item in os.listdir(os.path.join(base, "GAN", "outputs")):
+            if item.startswith(folder):
+                folder = item
+                break
+
+        json_samples_path = os.path.join(base, "GAN", "outputs", folder, "json_samples")
+
+        if not os.path.isdir(json_samples_path):
+            print(f"No 'json_samples' folder found at {json_samples_path}")
+            sys.exit(1)
+
+        jsonl_files = sorted([
+            os.path.join(json_samples_path, f)
+            for f in os.listdir(json_samples_path)
+            if f.endswith(".jsonl")
+        ])
+
+        if not jsonl_files:
+            print("No .jsonl files found in json_samples.")
+            sys.exit(1)
+
+        print(f"Found {len(jsonl_files)} .jsonl file(s). Loading frames...")
+        view(load_frames(jsonl_files))
+
+    else:
+        print("Invalid input. Expected format: g0 through g7.")
+        sys.exit(1)
+    
+    
+    
