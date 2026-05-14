@@ -8,7 +8,7 @@
   "latent_dim": 256,
   "ngf": 64,
   "ndf": 64,
-  "num_epochs": 50,
+  "num_epochs": 500,
   "lr_g": 0.0002,
   "lr_d": 0.0002,
   "beta1": 0.5,
