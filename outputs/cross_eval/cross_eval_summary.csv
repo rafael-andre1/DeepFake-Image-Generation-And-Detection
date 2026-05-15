@@ -1,0 +1,6 @@
+source,n,mean_p_fake,median_p_fake,pct_called_fake (p>0.5),p10,p90,scorer
+resnet|gan_samples,4224,0.596,0.6,97.325,0.54,0.643,resnet
+resnet|inpainting,5998,0.213,0.16,8.486,0.046,0.469,resnet
+resnet|insightface,5998,0.28,0.183,18.89,0.04,0.722,resnet
+resnet|sd15,5998,0.228,0.16,11.571,0.042,0.529,resnet
+resnet|wiki,5998,0.122,0.069,3.101,0.014,0.305,resnet
